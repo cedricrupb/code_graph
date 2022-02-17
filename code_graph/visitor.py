@@ -4,6 +4,24 @@ class ASTVisitor:
     def __init__(self):
         self._ast_handler = None
 
+    # Error handling ------------------------------------------------
+
+    def visit_ERROR(self, node):
+        """
+        An ERROR node is introduced if the parser reacts to an syntax error.
+
+        The subtree rooted an ERROR node might node be conventional
+        or a tree (might include cycles).
+        The walk function however assumes a tree as input and will
+        run in an infinite loop for errors.
+
+        Therefore, default strategy is to skip error nodes.
+        Can be overriden by subclasses.
+        
+        """
+        return False
+
+
     # Custom handler  ------------------------------------------------
 
     @staticmethod
@@ -18,6 +36,9 @@ class ASTVisitor:
         # or function is the node type
         # and definition is the edge type
         # Therefore, we register both
+        # Assumption:
+        #  - No node type function with edge definition
+        #  - or no node type function_definition
 
         atomic_name = "_".join(parts[1:])
         node_name   = "_".join(parts[1:-1])
@@ -113,16 +134,34 @@ class ASTVisitor:
             if next_node is None:
                 next_node = self._next_sibling(current_node)
 
+            previous_node = current_node
+
             # Step 4: Go up until sibling exists
             while next_node is None and current_node.parent is not None:
                 current_node = current_node.parent
-                if current_node == root_node: break
+                if node_equal(current_node, root_node): break
                 next_node    = self._next_sibling(current_node)
+
+                if node_equal(previous_node, next_node): 
+                    # A loop can occur if the program is not syntactically correct
+                    # Is this enough?
+                    next_node = None
 
             current_node = next_node
 
     def __call__(self, root_node):
         return self.walk(root_node)
+
+
+# Helper --------------------------------
+
+def node_equal(n1, n2):
+    try:
+        return (n1.type == n2.type 
+                    and n1.start_point == n2.start_point
+                    and n1.end_point   == n2.end_point)
+    except AttributeError:
+        return n1 == n2
 
 
 # Compositions ----------------------------------------------------------------

@@ -16,13 +16,13 @@ class CodeGraph:
         self._ast_nodes       = {} # Nodes indexed by an AST node
         self._anonymous_nodes = [] # Unindexed nodes, can only be indexed by traversal
 
-        self.root_node = self.add_node(root_node)
-
         prev_token = self._add_token(tokens[0])
         for token in tokens[1:]:
             token_node = self._add_token(token)
             prev_token.add_successor(token_node, "next_token")
             prev_token = token_node
+        
+        self.root_node = self.add_or_get_node(root_node)
 
     # Helper methods --------------------------------
 
@@ -61,6 +61,9 @@ class CodeGraph:
         return self._add_ast_node(node)
 
     def add_or_get_node(self, node):
+        if isinstance(node, SyntaxNode):
+            return self.add_or_get_node(node.ast_node)
+
         if isinstance(node, Node): return node
         try:
             return self._add_ast_node(node)
@@ -73,6 +76,9 @@ class CodeGraph:
         source_node.add_successor(target_node, relation)
 
     # API GET methods-----------------------------------------
+
+    def has_node(self, ast_node):
+        return node_key(ast_node) in self._ast_nodes
 
     def nodes(self):
         return chain(self._ast_nodes.values(), self._anonymous_nodes)
@@ -88,6 +94,17 @@ class CodeGraph:
                 dotwriter.run(f)
                 f.seek(0)
                 return f.read()
+
+    def tokens_only(self):
+        """
+        Computes a graph containing only tokens
+
+        Any edges of inner nodes will be propagated down to leaves.
+        The first token related to an inner node acts as an representant
+
+        """
+        return graph_to_tokens_only(self)
+         
       
     # Internal GET methods -----------------------------------
 
@@ -291,3 +308,66 @@ class GraphToDot:
         # Cleanup
         for src_node in self.graph:
             del src_node._dot_node_id
+
+
+# Propagate to leaves ----------------------------------------------------------------
+
+def _compute_representer(graph):
+    representer = {}
+
+    root_node = graph.root_node
+    queue     = [root_node]
+
+    while len(queue) > 0:
+        current_node = queue.pop(-1)
+        
+        path = []
+        while not hasattr(current_node, "token"):
+            path.append(current_node)
+            syntax_node    = current_node.ast_node
+            children       = [graph.add_or_get_node(c)
+                                for c in syntax_node.children 
+                                if graph.has_node(c)]
+            if len(children) == 0: break
+            first, *others = children
+            queue.extend(others)
+            current_node = first
+
+        for r in path: representer[r] = current_node
+
+    return representer
+
+
+SYNTAX_TYPES = {"child", "sibling"}
+
+def graph_to_tokens_only(graph):
+    representers = _compute_representer(graph)
+    tokens       = graph.tokens
+
+    output = CodeGraph(tokens[0].ast_node, tokens, lang = graph.lang)
+
+    for token in graph.tokens:
+        if not hasattr(token, "ast_node"): continue
+        token_node  = graph.add_or_get_node(token.ast_node)
+        output_node = output.add_or_get_node(token.ast_node)
+
+        for _, edge_type, successor in token_node.successors():
+            if edge_type in SYNTAX_TYPES: continue
+            if not hasattr(successor, "token"): continue
+            output_succ = output.add_or_get_node(successor.ast_node)
+            output.add_relation(output_node, output_succ, edge_type)
+            
+
+    for node, representer in representers.items():
+        output_representer = output.add_or_get_node(representer.ast_node)
+        
+        for _, edge_type, successor in node.successors():
+            if edge_type in SYNTAX_TYPES: continue
+            if successor not in representers: continue
+            successor_representer = representers[successor]
+            output_successor_representer = output.add_or_get_node(successor_representer.ast_node)
+            output.add_relation(output_representer, 
+                                output_successor_representer, 
+                                edge_type)
+
+    return output
