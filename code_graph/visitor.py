@@ -156,6 +156,7 @@ class ASTVisitor:
 # Helper --------------------------------
 
 def node_equal(n1, n2):
+    if n1 == n2: return True
     try:
         return (n1.type == n2.type 
                     and n1.start_point == n2.start_point

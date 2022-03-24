@@ -16,11 +16,16 @@ class CodeGraph:
         self._ast_nodes       = {} # Nodes indexed by an AST node
         self._anonymous_nodes = [] # Unindexed nodes, can only be indexed by traversal
 
+        self.token_nodes = []
+
         prev_token = self._add_token(tokens[0])
+        self.token_nodes.append(prev_token)
+
         for token in tokens[1:]:
             token_node = self._add_token(token)
             prev_token.add_successor(token_node, "next_token")
             prev_token = token_node
+            self.token_nodes.append(token_node)
         
         self.root_node = self.add_or_get_node(root_node)
 
@@ -70,7 +75,12 @@ class CodeGraph:
         except Exception:
             raise ValueError("Cannot add or get node %s. Only AST nodes can be indexed." % str(node))
 
-    def add_relation(self, source_node, target_node, relation = "ast"):
+    def add_relation(self, source_node, target_node, relation = "ast", no_create = False):
+
+        if no_create:
+            if not self.has_node(source_node): return
+            if not self.has_node(target_node): return
+
         source_node = self.add_or_get_node(source_node)
         target_node = self.add_or_get_node(target_node)
         source_node.add_successor(target_node, relation)
@@ -207,7 +217,8 @@ class SyntaxNode(Node):
 class TokenNode(SyntaxNode):
 
     def __init__(self, token):
-        super().__init__(token.ast_node)
+        token_node = token.ast_node if hasattr(token, 'ast_node') else None
+        super().__init__(token_node)
         self.token = token
     
     def node_name(self):
@@ -216,7 +227,7 @@ class TokenNode(SyntaxNode):
     def __hash__(self):
         if self.ast_node is not None:
             return hash(node_key(self.ast_node))
-        return self.token.text
+        return hash(self.token.text)
 
 
 

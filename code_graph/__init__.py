@@ -3,12 +3,11 @@ import code_tokenize as ctok
 from .graph import CodeGraph
 
 from .pylang   import pylang_analyses
-from .javalang import javalang_analyses
+from .javalang import javalang_analyses, java_preprocess
 
 
 def codegraph(source_code, lang = "guess", analyses = None, **kwargs):
-    tokens = ctok.tokenize(source_code, lang = lang, **kwargs)
-    root_node = _root_node(tokens)
+    root_node, tokens = preprocess_code(source_code, lang, **kwargs)
 
     graph_analyses = load_lang_analyses(tokens[0].config.lang)
 
@@ -32,14 +31,31 @@ def load_lang_analyses(lang):
     if lang == 'java'  : return javalang_analyses()
 
     raise NotImplementedError("Language %s is not supported" % lang)
-    
+
+
+def preprocess_code(source_code, lang, **kwargs):
+
+    if lang == "java": return java_preprocess(source_code, **kwargs)
+
+    return default_preprocess(source_code, lang, **kwargs)
+
+
+def default_preprocess(source_code, lang, **kwargs):
+    tokens = ctok.tokenize(source_code, lang = lang, **kwargs)
+    root_node = _root_node(tokens)
+    return root_node, tokens 
 
 # Helper methods --------------------------------
 
 def _root_node(tokens):
     if len(tokens) == 0: raise ValueError("Empty program has no root node")
 
-    base_token  = tokens[0]
+    i = 0
+    while not hasattr(tokens[i], "ast_node"):
+        i += 1
+
+    base_token = tokens[i]
+
     current_ast = base_token.ast_node 
     
     while current_ast.parent is not None:

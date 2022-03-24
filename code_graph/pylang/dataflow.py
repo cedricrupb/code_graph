@@ -88,6 +88,9 @@ class DataFlowVisitor(ASTVisitor):
 
     def record_read(self, node):
         node  = self.graph.add_or_get_node(node)
+
+        assert hasattr(node, "token"), "Expected to read from a token, but got: %s" % node
+
         qname = self.qualname(node.token.text)
         
         for last_read in self._last_reads[qname]:
@@ -385,6 +388,9 @@ class DataFlowVisitor(ASTVisitor):
 
         self._restore_rw_context(rw_context)
         return False
+    
+    def visit_string(self, node):
+        return False # Currently we do not support f-strings
 
 
 # Helper --------------------------------------------------------

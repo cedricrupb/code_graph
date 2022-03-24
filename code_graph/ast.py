@@ -15,4 +15,4 @@ class ASTRelationVisitor(ASTVisitor):
         
         prev_sibling = ast_node.prev_sibling
         if prev_sibling is not None:
-            graph.add_relation(prev_sibling, ast_node, "sibling")
+            graph.add_relation(prev_sibling, ast_node, "sibling", no_create=True)
