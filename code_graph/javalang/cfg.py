@@ -61,7 +61,7 @@ class ControlFlowVisitor(ASTVisitor):
 
     def visit_labeled_statement(self, node):
         name_node, _, body = node.children
-        name = self.graph.add_or_get_node(name_node) # has to be a token
+        name = self.graph.add_node(name_node) # has to be a token
         name = name.token.text
 
         self.walk(body)
@@ -81,7 +81,7 @@ class ControlFlowVisitor(ASTVisitor):
         jump_label = "__LOOP__"
         if node.child_count > 2:
             name_node  = node.children[1]
-            name_token = self.graph.add_or_get_node(name_node)
+            name_token = self.graph.add_node(name_node)
             jump_label = name_token.token.text
 
         self._break_from[jump_label].append(node)
@@ -94,7 +94,7 @@ class ControlFlowVisitor(ASTVisitor):
         jump_label = "__LOOP__"
         if node.child_count > 2:
             name_node  = node.children[1]
-            name_token = self.graph.add_or_get_node(name_node)
+            name_token = self.graph.add_node(name_node)
             jump_label = name_token.token.text
 
         self._continue_from[jump_label].append(node)

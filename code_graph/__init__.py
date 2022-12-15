@@ -6,17 +6,19 @@ from .pylang   import pylang_analyses
 from .javalang import javalang_analyses, java_preprocess
 
 
+DEFAULT_ANALYSES = ["ast", "cfg", "dataflow"]
+
+
 def codegraph(source_code, lang = "guess", analyses = None, **kwargs):
     root_node, tokens = preprocess_code(source_code, lang, **kwargs)
 
     graph_analyses = load_lang_analyses(tokens[0].config.lang)
 
-    if analyses is None:
-        analyses = graph_analyses.keys()
-    else:
-        assert all(a in graph_analyses.keys() for a in analyses), \
-                "Not all analyses are supported. Available analyses are: %s" % ", ".join(GRAPH_ANALYSES.keys())
-    
+    if analyses is None: analyses = DEFAULT_ANALYSES
+
+    assert all(a in graph_analyses.keys() for a in analyses), \
+            "Not all analyses are supported. Available analyses are: %s" % ", ".join(graph_analyses.keys())
+
     graph = CodeGraph(root_node, tokens, lang = lang)
     
     for analysis in analyses:

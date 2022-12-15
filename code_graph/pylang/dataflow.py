@@ -1,6 +1,8 @@
 
 from ..visitor import ASTVisitor
 
+from ..graph import SymbolNode
+
 from itertools import chain
 from copy import copy
 from contextlib import contextmanager
@@ -42,6 +44,8 @@ class DataFlowVisitor(ASTVisitor):
         super().__init__()
         self.graph = graph
 
+        self._var_nodes = {}
+
         self._last_writes = defaultdict(set)
         self._last_reads  = defaultdict(set)
 
@@ -79,19 +83,30 @@ class DataFlowVisitor(ASTVisitor):
 
     # Variable writes ----------------------------------------------------
 
+    def _occurrence_of(self, node, qname):
+        if qname not in self._var_nodes:
+            name = qname.split(".")[-1]
+            self._var_nodes[qname] =  self.graph.add_node(name)
+
+        var_node = self._var_nodes[qname]
+        self.graph.add_relation(node, var_node, "occurrence_of")
+
+
     def record_write(self, node):
-        node = self.graph.add_or_get_node(node)
+        node = self.graph.add_node(node)
         qname = self.register_in_scope(node.token.text)
+        self._occurrence_of(node, qname)
         self._last_reads[qname] = set()
         self._last_writes[qname] = {node}
 
 
     def record_read(self, node):
-        node  = self.graph.add_or_get_node(node)
+        node  = self.graph.add_node(node)
 
         assert hasattr(node, "token"), "Expected to read from a token, but got: %s" % node
 
         qname = self.qualname(node.token.text)
+        self._occurrence_of(node, qname)
         
         for last_read in self._last_reads[qname]:
             self.graph.add_relation(last_read, node, "next_may_use")
@@ -236,6 +251,7 @@ class DataFlowVisitor(ASTVisitor):
 
     @context("read")
     def visit_conditional_expression(self, node):
+        if len(node.children) != 5: return
         if_node, _, comparison_node, _, else_node = node.children
         self.walk(comparison_node)
 

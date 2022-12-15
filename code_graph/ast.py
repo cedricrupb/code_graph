@@ -10,8 +10,9 @@ class ASTRelationVisitor(ASTVisitor):
     def visit(self, ast_node):
         graph = self.graph
 
-        for child in ast_node.children:
-            graph.add_relation(ast_node, child, "child")
+        if not graph.is_token(ast_node):
+            for child in ast_node.children:
+                graph.add_relation(ast_node, child, "child")
         
         prev_sibling = ast_node.prev_sibling
         if prev_sibling is not None:

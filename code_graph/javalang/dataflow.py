@@ -79,14 +79,14 @@ class DataFlowVisitor(ASTVisitor):
     # Variable writes ----------------------------------------------------
 
     def record_write(self, node):
-        node = self.graph.add_or_get_node(node)
+        node = self.graph.add_node(node)
         qname = self.register_in_scope(node.token.text)
         self._last_reads[qname] = set()
         self._last_writes[qname] = {node}
 
 
     def record_read(self, node):
-        node  = self.graph.add_or_get_node(node)
+        node  = self.graph.add_node(node)
         qname = self.qualname(node.token.text)
         
         for last_read in self._last_reads[qname]:

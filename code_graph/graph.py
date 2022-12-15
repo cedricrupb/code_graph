@@ -5,17 +5,19 @@ from itertools import chain
 
 from code_tokenize.tokens import Token
 
+
 class CodeGraph:
 
     def __init__(self, root_node, tokens, lang = "python"):
 
         self.tokens = tokens
-        self.lang  = lang
+        self.root_node = root_node
+        self.lang = lang
 
-        # Internal container
-        self._ast_nodes       = {} # Nodes indexed by an AST node
-        self._anonymous_nodes = [] # Unindexed nodes, can only be indexed by traversal
+        self.__nodes     = [] # General container for all nodes
+        self.__ast_nodes = {} # Nodes indexed by AST
 
+        # Init graph
         self.token_nodes = []
 
         prev_token = self._add_token(tokens[0])
@@ -27,53 +29,41 @@ class CodeGraph:
             prev_token = token_node
             self.token_nodes.append(token_node)
         
-        self.root_node = self.add_or_get_node(root_node)
+        self.root_node = self.add_node(root_node)
 
-    # Helper methods --------------------------------
+    # Add nodes ----------------------------------------------------------------
 
-    def _add_anonymous(self, node_obj):
-        self._anonymous_nodes.append(node_obj)
-        return node_obj
+    def _add_node(self, node):
 
-    def _add_ast_node(self, ast_node, node_obj = None):
-        ast_node_key = node_key(ast_node)
+        if hasattr(node, "_graph_idx"):
+            # Node is already assigned to a graph
+            graph_idx = node._graph_idx
+            assert self.__nodes[graph_idx] == node, "Node is already assigned to another graph"
+            return node
 
-        if ast_node_key in self._ast_nodes:
-            return self._ast_nodes[ast_node_key]
+        if hasattr(node, "ast_node") and node.ast_node is not None:
+            ast_key = node_key(node.ast_node)
+            try:
+                return self.__ast_nodes[ast_key]
+            except KeyError:
+                self.__ast_nodes[ast_key] = node
 
-        if node_obj is None:
-            node_obj = SyntaxNode(ast_node)
-        
-        self._ast_nodes[ast_node_key] = node_obj
-        return node_obj
+        node._graph_idx = len(self.__nodes)
+        self.__nodes.append(node)
+        return node
+
+    def _add_ast_node(self, ast_node):
+        return self._add_node(SyntaxNode(ast_node))
 
     def _add_token(self, token):
-        token_node = TokenNode(token)
+        return self._add_node(TokenNode(token))
 
-        if token_node.ast_node is not None:
-            return self._add_ast_node(token_node.ast_node, token_node)
-        else:
-            return self._add_anonymous(token_node)
-
-    # ADD methods -----------------------------------
-    # Currently, we do not support removal
-    
     def add_node(self, node):
-        if isinstance(node, Token):      return self._add_token(node)
-        if isinstance(node, SyntaxNode): return self._add_ast_node(node.ast_node, node)
-        if isinstance(node, Node):       return self._add_anonymous(node)
+        if isinstance(node, Node): return self._add_node(node)
+        if isinstance(node, Token): return self._add_token(node)
+        if isinstance(node, str): return self._add_node(SymbolNode(node))
 
         return self._add_ast_node(node)
-
-    def add_or_get_node(self, node):
-        if isinstance(node, SyntaxNode):
-            return self.add_or_get_node(node.ast_node)
-
-        if isinstance(node, Node): return node
-        try:
-            return self._add_ast_node(node)
-        except Exception:
-            raise ValueError("Cannot add or get node %s. Only AST nodes can be indexed." % str(node))
 
     def add_relation(self, source_node, target_node, relation = "ast", no_create = False):
 
@@ -81,17 +71,27 @@ class CodeGraph:
             if not self.has_node(source_node): return
             if not self.has_node(target_node): return
 
-        source_node = self.add_or_get_node(source_node)
-        target_node = self.add_or_get_node(target_node)
+        source_node = self.add_node(source_node)
+        target_node = self.add_node(target_node)
         source_node.add_successor(target_node, relation)
 
     # API GET methods-----------------------------------------
 
     def has_node(self, ast_node):
-        return node_key(ast_node) in self._ast_nodes
+        try:
+            return self.__nodes[ast_node._graph_idx] == ast_node
+        except (IndexError, AttributeError):
+            return node_key(ast_node) in self.__ast_nodes
+
+    def node_by_ast(self, ast_node):
+        if not self.has_node(ast_node): return None
+        return self.__ast_nodes[node_key(ast_node)]
+
+    def is_token(self, ast_node):
+        return hasattr(self.node_by_ast(ast_node), "token")
 
     def nodes(self):
-        return chain(self._ast_nodes.values(), self._anonymous_nodes)
+        return self.__nodes
 
     def todot(self, file_name = None, edge_colors = None):
         dotwriter = GraphToDot(self, edge_colors)
@@ -119,7 +119,7 @@ class CodeGraph:
     # Internal GET methods -----------------------------------
 
     def __len__(self):
-        return len(self._ast_nodes) + len(self._anonymous_nodes)
+        return len(self.__nodes)
 
     def __iter__(self):
         return iter(self.nodes())
@@ -199,6 +199,9 @@ class Node:
     def predecessors_by_type(self, edge_type):
         return self._iter_predecessors(edge_type)
 
+    def clone(self):
+        return Node()
+
 # Node types --------------------------------------------------------
 
 class SyntaxNode(Node):
@@ -209,6 +212,9 @@ class SyntaxNode(Node):
 
     def node_name(self):
         return self.ast_node.type
+
+    def clone(self):
+        return SyntaxNode(self.ast_node)
 
     def __hash__(self):
         return hash(node_key(self.ast_node))
@@ -223,12 +229,14 @@ class TokenNode(SyntaxNode):
     
     def node_name(self):
         return self.token.text
+    
+    def clone(self):
+        return TokenNode(self.token)
 
     def __hash__(self):
         if self.ast_node is not None:
             return hash(node_key(self.ast_node))
         return hash(self.token.text)
-
 
 
 class SymbolNode(Node):
@@ -240,12 +248,19 @@ class SymbolNode(Node):
     def node_name(self):
         return self.symbol
 
+    def clone(self):
+        return SymbolNode(self.symbol)
+
+    def __hash__(self):
+        return hash(self.symbol)
+
 
 # Utils --------------------------------------------------------
 
 def node_key(node):
     start_pos, end_pos = node.start_point, node.end_point
-    return (node.type, start_pos[0], start_pos[1], end_pos[0], end_pos[1])
+    child_count = node.child_count
+    return (node.type, child_count, start_pos[0], start_pos[1], end_pos[0], end_pos[1])
 
 
 class GraphToDot:
@@ -253,10 +268,6 @@ class GraphToDot:
     def __init__(self, graph, edge_colors = None):
         self.graph = graph
         self.edge_colors = {} if edge_colors is None else edge_colors
-
-    def _map_nodes_to_ix(self):
-        for ix, node in enumerate(self.graph):
-            node._dot_node_id = ix
 
     def _dot_edge(self, source_id, rel_type, target_id):
         
@@ -266,7 +277,6 @@ class GraphToDot:
         return f'node{source_id} -> node{target_id} [label="{rel_type}" {edge_style}];\n'
 
     def run(self, writeable):
-        self._map_nodes_to_ix()
 
         def escape(token):
             return token.replace('"', '\\"')
@@ -281,7 +291,7 @@ class GraphToDot:
                 continue
             node_name = node.node_name()
             writeable.write(
-                f'\tnode{node._dot_node_id}[shape="rectangle", label="{node_name}"];\n'
+                f'\tnode{node._graph_idx}[shape="rectangle", label="{node_name}"];\n'
             )
 
         # Tokens
@@ -291,12 +301,12 @@ class GraphToDot:
         for token_node in tokens:
             token_text = escape(token_node.node_name())
             writeable.write(
-                f'\t\tnode{token_node._dot_node_id}[shape="rectangle", label="{token_text}"];\n'
+                f'\t\tnode{token_node._graph_idx}[shape="rectangle", label="{token_text}"];\n'
             )
 
             for _, edge_type, next_token in token_node.successors_by_type("next_token"):
                 next_token_edges.append(
-                    self._dot_edge(token_node._dot_node_id, edge_type, next_token._dot_node_id)
+                    self._dot_edge(token_node._graph_idx, edge_type, next_token._graph_idx)
                 )
 
         for edge in next_token_edges:
@@ -308,20 +318,40 @@ class GraphToDot:
             for _, edge_type, target_node in src_node.successors():
                 if edge_type == "next_token": continue
                 edge_str = self._dot_edge(
-                    src_node._dot_node_id,
+                    src_node._graph_idx,
                     edge_type,
-                    target_node._dot_node_id
+                    target_node._graph_idx
                 )
                 writeable.write(f"\t{edge_str}")
         
         writeable.write("}\n")
 
-        # Cleanup
-        for src_node in self.graph:
-            del src_node._dot_node_id
-
 
 # Propagate to leaves ----------------------------------------------------------------
+
+def _children(root_node):
+    return [c for _, edge_type, c in root_node.successors() if edge_type == "child"]
+
+def _bfs_token_search(root_node):
+    token_nodes = []
+    queue = [root_node]
+
+    while len(queue) > 0:
+        current_node = queue.pop()
+
+        if hasattr(current_node, "token"): token_nodes.append(current_node)
+
+        if len(token_nodes) == 0:
+            queue.extend(_children(current_node))
+
+    return min(token_nodes, key =lambda c: c._graph_idx)
+
+
+def _left_token_search(root_node):
+    while not hasattr(root_node, "token"):
+        root_node = min(_children(root_node), key=lambda c: c._graph_idx)
+    return root_node
+
 
 def _compute_representer(graph):
     representer = {}
@@ -331,20 +361,11 @@ def _compute_representer(graph):
 
     while len(queue) > 0:
         current_node = queue.pop(-1)
-        
-        path = []
-        while not hasattr(current_node, "token"):
-            path.append(current_node)
-            syntax_node    = current_node.ast_node
-            children       = [graph.add_or_get_node(c)
-                                for c in syntax_node.children 
-                                if graph.has_node(c)]
-            if len(children) == 0: break
-            first, *others = children
-            queue.extend(others)
-            current_node = first
 
-        for r in path: representer[r] = current_node
+        if current_node in representer: continue
+
+        representer[current_node] = _left_token_search(current_node)
+        queue.extend(_children(current_node))
 
     return representer
 
@@ -357,26 +378,25 @@ def graph_to_tokens_only(graph):
 
     output = CodeGraph(tokens[0].ast_node, tokens, lang = graph.lang)
 
-    for token in graph.tokens:
-        if not hasattr(token, "ast_node"): continue
-        token_node  = graph.add_or_get_node(token.ast_node)
-        output_node = output.add_or_get_node(token.ast_node)
+    for ix, token_node in enumerate(graph.token_nodes):
+        output_node = output.token_nodes[ix]
 
         for _, edge_type, successor in token_node.successors():
             if edge_type in SYNTAX_TYPES: continue
             if not hasattr(successor, "token"): continue
-            output_succ = output.add_or_get_node(successor.ast_node)
+
+            output_succ = output.token_nodes[successor._graph_idx]
             output.add_relation(output_node, output_succ, edge_type)
-            
 
     for node, representer in representers.items():
-        output_representer = output.add_or_get_node(representer.ast_node)
+        token_idx = representer._graph_idx
+        output_representer = output.token_nodes[token_idx]
         
         for _, edge_type, successor in node.successors():
             if edge_type in SYNTAX_TYPES: continue
             if successor not in representers: continue
             successor_representer = representers[successor]
-            output_successor_representer = output.add_or_get_node(successor_representer.ast_node)
+            output_successor_representer = output.token_nodes[successor_representer._graph_idx]
             output.add_relation(output_representer, 
                                 output_successor_representer, 
                                 edge_type)
