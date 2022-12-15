@@ -20,7 +20,7 @@ setup(
           'tree_sitter',
           'GitPython',
           'requests',
-          'code_tokenize'
+          'code_ast'
       ],
   classifiers=[
     'Development Status :: 3 - Alpha',    
