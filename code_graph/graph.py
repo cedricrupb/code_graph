@@ -1,8 +1,6 @@
 from io import StringIO
 from collections import defaultdict
 
-from itertools import chain
-
 from code_tokenize.tokens import Token
 
 

@@ -10,6 +10,58 @@ DEFAULT_ANALYSES = ["ast", "cfg", "dataflow"]
 
 
 def codegraph(source_code, lang = "guess", analyses = None, **kwargs):
+    """
+    Transforms source code into an annotated AST.
+
+    Given source code as string, this function quickly transforms
+    the given code into an annotated AST. The AST is annotated with multiple 
+    (configurable) relations like control flow and data flow.  
+    The function uses tree-sitter as a backend. Therefore, this
+    function can in theory support most programming languages (see README).
+    However, since control flow and data flow have to be tailored to a specific
+    language only Java and Python are supported at the moment.
+
+    All transformations are based on the transformations used in 
+    'Self-Supervised Bug Detection and Repair' (Allamanis et al., 2021).
+    The original implementation for Python can be found here: 
+    https://github.com/microsoft/neurips21-self-supervised-bug-detection-and-repair
+    Note that interprocedural analysis (and relations) are currently not supported.
+
+
+    Parameters
+    ----------
+    source_code : str
+        Source code to parsed as a string. Also
+        supports parsing of incomplete source code
+        snippets (by deactivating the syntax checker; see syntax_error)
+    
+    lang : [python, java]
+        String identifier of the programming language
+        to be parsed. Supported are most programming languages
+        including python, java and javascript (see README)
+        Default: guess (Guesses language / Not supported currently throws error currently)
+    
+    analyses: list of [ast, cfg, dataflow, subcfg]
+        The analyses that should be applied during parsing the source code and
+        the relations included the output.
+        ast: Include relations based on the abstract syntax tree (the AST is always computed)
+        cfg: Relations related to the control flow in the program (on a statement level)
+        dataflow: Relations related to the data flow between variables
+        subcfg: Relations related to the control flow (on a subexpression level)
+    
+    syntax_error : [raise, warn, ignore]
+        Reaction to syntax error in code snippet.
+        raise:  raises a Syntax Error
+        warn:   prints a warning to console
+        ignore: Ignores syntax errors. Helpful for parsing code snippets.
+        Default: raise
+
+    Returns
+    -------
+    SourceCodeGraph
+        A labelled multi graph representing the given source code
+    """
+
     root_node, tokens = preprocess_code(source_code, lang, **kwargs)
 
     graph_analyses = load_lang_analyses(tokens[0].config.lang)
