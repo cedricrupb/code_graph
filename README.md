@@ -1,5 +1,4 @@
 # Code Graph
-------------------------------------------------
 > Fast program graph generation in Python
 
 Many Programming Language Processing (PLP) exploit the fact that programming languages are highly structured. Therefore, it is easy to parse a program
